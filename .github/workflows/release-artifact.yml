@@ -1,0 +1,104 @@
+name: Release Artifact
+
+# Publishes @chronary/schemas to npm and creates a GitHub Release.
+#
+# Provenance posture (same pattern as @chronary/sdk):
+#   - While the chronary-schemas repo is PRIVATE, npm automatic provenance
+#     can't run (requires public source repo), so --provenance is off.
+#   - GitHub artifact attestations require a public repo on the free plan,
+#     so the attest step is gated on repository.visibility.
+#
+# Workspace dependency caveat:
+#   - package.json declares @chronary/shared as a devDependency with
+#     "workspace:*". That only resolves inside the monorepo. tsup bundles
+#     @chronary/shared INTO the published dist/ via noExternal, so
+#     consumers of the published package don't need it. But in the mirror,
+#     pnpm install against npm would still fail because workspace:* has
+#     no resolver there. While publish_registry=false we skip the full
+#     build pipeline and ship source + GitHub Release. When
+#     publish_registry flips on, workspace:* must be rewritten (or the
+#     shared source inlined at release time) BEFORE install — wired in
+#     the public-flip PR (#222).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Validate release manifest
+        id: manifest
+        run: |
+          node -e "const fs=require('fs'); const manifest=JSON.parse(fs.readFileSync('.chronary-release.json','utf8')); if (manifest.artifact !== 'schemas') throw new Error('Expected artifact schemas'); if (manifest.public_tag !== process.env.GITHUB_REF_NAME) throw new Error('Tag mismatch between manifest and workflow ref'); require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'publish_registry=' + String(Boolean(manifest.publish_registry)) + '\n');"
+          test -f RELEASE_NOTES.txt
+
+      - name: Validate package contents
+        run: |
+          test -f README.md
+          test -f LICENSE
+          test -f CHANGELOG.md
+          test -f package.json
+
+      - name: Skip build in private phase
+        if: steps.manifest.outputs.publish_registry != 'true'
+        run: |
+          echo "publish_registry=false — shipping source-only release."
+          echo "pnpm install/build/test/publish skipped while @chronary/shared workspace:* dep is not yet resolvable from npm."
+
+      - name: Install dependencies
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: pnpm typecheck
+
+      - name: Test
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: pnpm test
+
+      - name: Build
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: pnpm build
+
+      - name: Pack tarball
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: pnpm pack
+
+      - name: Attest build provenance for npm tarball
+        if: steps.manifest.outputs.publish_registry == 'true' && github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: '*.tgz'
+
+      - name: Publish to npm
+        if: steps.manifest.outputs.publish_registry == 'true'
+        run: npm publish *.tgz
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "@chronary/schemas ${GITHUB_REF_NAME}" \
+            --notes-file RELEASE_NOTES.txt
