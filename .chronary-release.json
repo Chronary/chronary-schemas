@@ -1,0 +1,9 @@
+{
+  "artifact": "schemas",
+  "version": "0.1.0",
+  "public_tag": "v0.1.0",
+  "private_source_sha": "daef7179806727319c7da995eb925af421f37f95",
+  "private_release_tag": "public-release/20260424.6-daef717",
+  "publish_registry": false,
+  "generated_at": "2026-04-24T20:28:47.901Z"
+}
