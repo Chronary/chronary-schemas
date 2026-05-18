@@ -1,20 +1,14 @@
 /**
  * `@chronary/schemas` — Zod schemas + types for the Chronary calendar API.
  *
- * Subsets the internal `@chronary/shared` schemas for external consumers,
- * plus new per-event-type webhook payload schemas for runtime validation
- * of incoming webhooks.
+ * Self-contained public schemas for external consumers, plus per-event-type
+ * webhook payload schemas for runtime validation of incoming webhooks.
  *
  * See {@link ./events | `./events`} for webhook-specific exports.
  */
 
 // Webhook payload schemas + discriminator.
 export * from './events';
-
-// Re-export the request schemas that make sense for external consumers.
-// These come from `@chronary/shared`, which is a private workspace package;
-// tsup bundles the schema definitions into the published output so
-// consumers have no runtime dependency on `@chronary/shared`.
 
 export {
   // Calendars
@@ -79,4 +73,4 @@ export {
   RespondToProposalSchema,
   type CreateProposalInput,
   type RespondToProposalInput,
-} from '@chronary/shared';
+} from './shared';

@@ -9,10 +9,10 @@
 
 import { z } from 'zod';
 
-import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '@chronary/shared';
+import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from './shared';
 
-export { WEBHOOK_EVENT_TYPES } from '@chronary/shared';
-export type { WebhookEventType } from '@chronary/shared';
+export { WEBHOOK_EVENT_TYPES } from './shared';
+export type { WebhookEventType } from './shared';
 
 // Each payload schema uses .passthrough() so forward-compatible field
 // additions on the API side don't break consumers. Known fields are
