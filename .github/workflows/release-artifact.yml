@@ -2,23 +2,35 @@ name: Release Artifact
 
 # Publishes @chronary/schemas to npm and creates a GitHub Release.
 #
-# Provenance posture (same pattern as @chronary/sdk):
-#   - While the chronary-schemas repo is PRIVATE, npm automatic provenance
-#     can't run (requires public source repo), so --provenance is off.
-#   - GitHub artifact attestations require a public repo on the free plan,
-#     so the attest step is gated on repository.visibility.
+# Provenance posture:
+#   - Publishes via npm OIDC Trusted Publishing — no NPM_TOKEN required.
+#     The `id-token: write` permission and `registry-url` on setup-node
+#     are sufficient once chronary-schemas is registered as a Trusted
+#     Publisher for @chronary/schemas on npmjs.com.
+#   - npm CLI >= 11.5.1 is required for OIDC trusted publishing; we
+#     pin npm to latest before publishing because Node 22 ships with
+#     npm 10.x by default.
+#   - `npm publish --provenance` records a Sigstore attestation that
+#     links the published tarball back to this workflow run.
+#   - GitHub artifact attestations also fire on public repos via
+#     actions/attest-build-provenance.
 #
-# Workspace dependency caveat:
-#   - package.json declares @chronary/shared as a devDependency with
-#     "workspace:*". That only resolves inside the monorepo. tsup bundles
-#     @chronary/shared INTO the published dist/ via noExternal, so
-#     consumers of the published package don't need it. But in the mirror,
-#     pnpm install against npm would still fail because workspace:* has
-#     no resolver there. While publish_registry=false we skip the full
-#     build pipeline and ship source + GitHub Release. When
-#     publish_registry flips on, workspace:* must be rewritten (or the
-#     shared source inlined at release time) BEFORE install — wired in
-#     the public-flip PR (#222).
+# Workspace dep posture:
+#   - schemas is self-contained (no runtime or build-time dep on other
+#     workspace packages — re-checked when the mirror flipped public).
+#     If a future change reintroduces a `workspace:*` dep, the build
+#     step here will break in the mirror and the fix is a pre-install
+#     rewrite of `workspace:*` → an exact npm version, the same pattern
+#     used by chronary-toolkit-release-artifact.yml.
+#
+# Prerequisites (one-time, on flip to public-registry):
+#   1. chronary-schemas is public on GitHub.
+#   2. First publish must use a classic token from local (npm has no
+#      "Pending Publisher" flow — see npm/cli#8544). After that, register
+#      Trusted Publisher on npmjs.com → @chronary/schemas → Access tab →
+#      repo `Chronary/chronary-schemas`, workflow `release-artifact.yml`,
+#      environment blank.
+#   3. NPM_TOKEN repo secret (if any) has been deleted.
 
 on:
   push:
@@ -35,7 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,57 +59,55 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Upgrade npm for OIDC trusted publishing
+        run: |
+          # npm install -g npm@latest fails when the runner's bundled npm is incomplete
+          # (e.g. missing promise-retry on Node 22.22+). Bypass by downloading the
+          # tarball directly into the existing module directory.
+          NPM_DIR="$(node -e "process.stdout.write(require('path').resolve(process.execPath,'../../lib/node_modules/npm'))")"
+          curl -fsSL https://registry.npmjs.org/npm/-/npm-11.5.1.tgz -o /tmp/npm.tgz
+          tar -xzf /tmp/npm.tgz --strip-components=1 -C "$NPM_DIR"
+          npm --version
+
       - name: Validate release manifest
         id: manifest
         run: |
           node -e "const fs=require('fs'); const manifest=JSON.parse(fs.readFileSync('.chronary-release.json','utf8')); if (manifest.artifact !== 'schemas') throw new Error('Expected artifact schemas'); if (manifest.public_tag !== process.env.GITHUB_REF_NAME) throw new Error('Tag mismatch between manifest and workflow ref'); require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'publish_registry=' + String(Boolean(manifest.publish_registry)) + '\n');"
           test -f RELEASE_NOTES.txt
 
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
       - name: Validate package contents
         run: |
           test -f README.md
           test -f LICENSE
           test -f CHANGELOG.md
-          test -f package.json
-
-      - name: Skip build in private phase
-        if: steps.manifest.outputs.publish_registry != 'true'
-        run: |
-          echo "publish_registry=false — shipping source-only release."
-          echo "pnpm install/build/test/publish skipped while @chronary/shared workspace:* dep is not yet resolvable from npm."
-
-      - name: Install dependencies
-        if: steps.manifest.outputs.publish_registry == 'true'
-        run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck
-        if: steps.manifest.outputs.publish_registry == 'true'
         run: pnpm typecheck
 
       - name: Test
-        if: steps.manifest.outputs.publish_registry == 'true'
         run: pnpm test
 
       - name: Build
-        if: steps.manifest.outputs.publish_registry == 'true'
         run: pnpm build
 
       - name: Pack tarball
-        if: steps.manifest.outputs.publish_registry == 'true'
         run: pnpm pack
 
       - name: Attest build provenance for npm tarball
-        if: steps.manifest.outputs.publish_registry == 'true' && github.event.repository.visibility == 'public'
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: '*.tgz'
 
       - name: Publish to npm
         if: steps.manifest.outputs.publish_registry == 'true'
-        run: npm publish *.tgz
+        run: npm publish *.tgz --provenance --access public
 
       - name: Create GitHub Release
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${GITHUB_REF_NAME}" *.tgz \
             --title "@chronary/schemas ${GITHUB_REF_NAME}" \
             --notes-file RELEASE_NOTES.txt
