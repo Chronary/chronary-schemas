@@ -62,6 +62,16 @@ const EventLifecyclePayloadSchema = z
 const EventHoldCreatedPayloadSchema = EventLifecyclePayloadSchema;
 const EventStartedPayloadSchema = EventLifecyclePayloadSchema;
 const EventEndedPayloadSchema = EventLifecyclePayloadSchema;
+const EventReminderPayloadSchema = z
+  .object({
+    event_id: z.string(),
+    calendar_id: z.string(),
+    title: z.string(),
+    start_time: z.string(),
+    end_time: z.string(),
+    reminder_minutes: z.number().int(),
+  })
+  .passthrough();
 const EventHoldExpiredPayloadSchema = z
   .object({
     event_id: z.string(),
@@ -127,6 +137,7 @@ const PAYLOAD_SCHEMAS = {
   'event.deleted': EventDeletedPayloadSchema,
   'event.started': EventStartedPayloadSchema,
   'event.ended': EventEndedPayloadSchema,
+  'event.reminder': EventReminderPayloadSchema,
   'event.hold_created': EventHoldCreatedPayloadSchema,
   'event.hold_expired': EventHoldExpiredPayloadSchema,
   'event.hold_released': EventHoldReleasedPayloadSchema,
@@ -147,6 +158,7 @@ export {
   EventDeletedPayloadSchema,
   EventStartedPayloadSchema,
   EventEndedPayloadSchema,
+  EventReminderPayloadSchema,
   EventHoldCreatedPayloadSchema,
   EventHoldExpiredPayloadSchema,
   EventHoldReleasedPayloadSchema,

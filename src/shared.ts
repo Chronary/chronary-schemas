@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const metadataSchema = z
-  .record(z.unknown())
+  .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 16_384, 'metadata exceeds 16KB');
 
 export const CreateAgentSchema = z.object({
@@ -29,10 +29,28 @@ export const ListAgentsQuerySchema = z.object({
 
 export const AgentStatusEnum = z.enum(['idle', 'working', 'waiting', 'error']);
 
+// Reminders — minutes before an event's start_time at which an `event.reminder`
+// webhook fires. The system default applies when neither the event nor its
+// calendar sets a value.
+export const REMINDER_MIN_MINUTES = 1;
+export const REMINDER_MAX_MINUTES = 40_320; // 28 days
+export const REMINDER_MAX_COUNT = 5;
+export const DEFAULT_EVENT_REMINDERS: readonly number[] = [10];
+
+// Array of "minutes before start". Deduped and sorted ascending. An empty array
+// means "explicitly no reminders"; `null` (on an event/calendar) means "inherit".
+export const RemindersSchema = z
+  .array(z.number().int().min(REMINDER_MIN_MINUTES).max(REMINDER_MAX_MINUTES))
+  .max(REMINDER_MAX_COUNT, `at most ${REMINDER_MAX_COUNT} reminders allowed`)
+  .transform((arr) => Array.from(new Set(arr)).sort((a, b) => a - b));
+
 export const CreateCalendarSchema = z.object({
   name: z.string().min(1).max(255),
   timezone: z.string().min(1),
   agent_status: AgentStatusEnum.optional(),
+  // Default reminders inherited by events on this calendar that don't set their
+  // own. `null` means "use the system default"; `[]` means "no reminders".
+  default_reminders: RemindersSchema.nullable().optional(),
   metadata: metadataSchema.optional(),
 });
 
@@ -41,6 +59,7 @@ export const UpdateCalendarSchema = z
     name: z.string().min(1).max(255).optional(),
     timezone: z.string().min(1).optional(),
     agent_status: AgentStatusEnum.optional(),
+    default_reminders: RemindersSchema.nullable().optional(),
     metadata: metadataSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
@@ -66,6 +85,7 @@ export const CreateEventSchema = z
     all_day: z.boolean().default(false),
     status: z.enum(EVENT_STATUSES).default('confirmed'),
     metadata: metadataSchema.optional(),
+    reminders: RemindersSchema.nullable().optional(),
     hold_expires_at: z.string().datetime().optional(),
     hold_priority: z.number().int().min(0).max(100).optional(),
   })
@@ -122,6 +142,7 @@ export const UpdateEventSchema = z
     all_day: z.boolean().optional(),
     status: z.enum(['confirmed', 'tentative', 'cancelled']).optional(),
     metadata: metadataSchema.optional(),
+    reminders: RemindersSchema.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
 
@@ -194,6 +215,7 @@ export const WEBHOOK_EVENT_TYPES = [
   'event.deleted',
   'event.started',
   'event.ended',
+  'event.reminder',
   'event.hold_created',
   'event.hold_expired',
   'event.hold_released',

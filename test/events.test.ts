@@ -72,7 +72,7 @@ describe('parseWebhookEvent', () => {
     }
   });
 
-  it('parses all 17 event types with their minimum-valid payloads', () => {
+  it('parses all 18 event types with their minimum-valid payloads', () => {
     const minimal: Record<string, unknown> = {
       'agent.created': { agent: {} },
       'agent.updated': { agent: {} },
@@ -81,6 +81,7 @@ describe('parseWebhookEvent', () => {
       'event.deleted': { event_id: 'e', calendar_id: 'c' },
       'event.started': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
       'event.ended': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
+      'event.reminder': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e', reminder_minutes: 10 },
       'event.hold_created': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
       'event.hold_expired': { event_id: 'e' },
       'event.hold_released': { event_id: 'e' },
