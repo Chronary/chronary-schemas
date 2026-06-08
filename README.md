@@ -21,19 +21,21 @@ import { parseWebhookEvent } from '@chronary/schemas/events';
 import { verifySignature } from '@chronary/sdk';
 
 app.post('/webhook', async (req, res) => {
-  // 1. Authenticate with the HMAC signature before trusting anything.
-  const ok = await verifySignature(
-    process.env.CHRONARY_WEBHOOK_SECRET!,
-    req.header('x-timestamp')!,
-    await req.text(),
-    req.header('x-signature')!,
-  );
-  if (!ok) return res.status(401).end();
+  const rawBody = await req.text();
 
-  // 2. Parse into a typed event.
+  // 1. Authenticate with the HMAC signature before trusting anything.
+  //    verifySignature reads X-Signature/X-Timestamp from the headers and
+  //    throws on a bad/missing signature or a stale timestamp.
+  try {
+    await verifySignature(rawBody, req.headers, process.env.CHRONARY_WEBHOOK_SECRET!);
+  } catch {
+    return res.status(401).end();
+  }
+
+  // 2. Parse into a typed event (the event type comes from the header).
   const event = parseWebhookEvent(
     req.header('x-chronary-event-type'),
-    req.body,
+    JSON.parse(rawBody),
   );
 
   if (!event.success) {
@@ -68,9 +70,9 @@ app.post('/webhook', async (req, res) => {
 - **HTTP method**: `POST` to your webhook URL.
 - **Headers**:
   - `X-Signature` — HMAC-SHA256 signature of `timestamp + "." + body` (verify with [`@chronary/sdk`'s `verifySignature`](https://github.com/Chronary/chronary-node)).
-  - `X-Timestamp` — ISO 8601 timestamp used in the signature.
+  - `X-Timestamp` — Unix epoch seconds (decimal string, e.g. `1745784205`) used in the signature.
   - `X-Delivery-Id` — unique delivery ID (useful for idempotency + debugging).
-  - `X-Chronary-Event-Type` — one of the 17 event types in `WEBHOOK_EVENT_TYPES`.
+  - `X-Chronary-Event-Type` — one of the 18 event types in `WEBHOOK_EVENT_TYPES`.
 - **Body**: raw JSON payload (schema depends on the event type).
 
 ### Forward compatibility
@@ -98,7 +100,7 @@ Available:
 - `CreateProposalSchema`, `RespondToProposalSchema`
 - `WorkingHoursSchema`, `UpdateAvailabilityRulesSchema`, `AvailabilityQuerySchema`, `CrossAgentAvailabilityQuerySchema`
 
-Plus type exports (`z.infer` on each schema) like `CreateEventInput`, `CreateCalendarInput`, etc.
+Plus type exports inferred from each schema, like `CreateEventInput`, `CreateCalendarInput`, etc.
 
 ## Full docs
 
