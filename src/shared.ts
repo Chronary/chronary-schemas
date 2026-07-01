@@ -181,16 +181,61 @@ export const UpdateAvailabilityRulesSchema = z.object({
   timezone: z.string().min(1).max(64).default('UTC'),
 });
 
+const SLOT_DURATIONS = ['15m', '30m', '45m', '1h', '2h'] as const;
+type SlotDuration = (typeof SLOT_DURATIONS)[number];
+const DEFAULT_SLOT_DURATION: SlotDuration = '30m';
+
+const DurationEnum = z.enum(SLOT_DURATIONS);
+
+// `duration` is the preferred public parameter for the requested slot length;
+// `slot_duration` is a deprecated backward-compatible alias. Callers may send
+// either (or both, if identical). Both are optional at the boundary and are
+// coalesced into the canonical internal `slot_duration` — so downstream
+// services keep reading `query.slot_duration` unchanged. Sending both with
+// DIFFERENT values is a 400 rather than a silent pick, so an agent that
+// disagrees with itself gets told instead of getting the wrong slot length.
+const durationFields = {
+  duration: DurationEnum.optional(),
+  slot_duration: DurationEnum.optional(),
+};
+
+function refineDurationConflict(
+  v: { duration?: SlotDuration; slot_duration?: SlotDuration },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    v.duration !== undefined &&
+    v.slot_duration !== undefined &&
+    v.duration !== v.slot_duration
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "`duration` and `slot_duration` conflict; send only one (they are aliases). `slot_duration` is deprecated — prefer `duration`.",
+      path: ['duration'],
+    });
+  }
+}
+
+function resolveDuration<T extends { duration?: SlotDuration; slot_duration?: SlotDuration }>(
+  v: T,
+): Omit<T, 'duration'> & { slot_duration: SlotDuration } {
+  const { duration, ...rest } = v;
+  return { ...rest, slot_duration: duration ?? v.slot_duration ?? DEFAULT_SLOT_DURATION };
+}
+
 export const AvailabilityQuerySchema = z
   .object({
     start: z.string().datetime(),
     end: z.string().datetime(),
-    slot_duration: z.enum(['15m', '30m', '45m', '1h', '2h']).default('30m'),
+    ...durationFields,
     include_busy: z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
   })
+  .superRefine(refineDurationConflict)
+  .transform(resolveDuration)
   .refine((v) => new Date(v.end) > new Date(v.start), 'end must be after start');
 
 export const CrossAgentAvailabilityQuerySchema = z
@@ -198,13 +243,15 @@ export const CrossAgentAvailabilityQuerySchema = z
     agents: z.string().min(1).transform((v) => v.split(',')),
     start: z.string().datetime(),
     end: z.string().datetime(),
-    slot_duration: z.enum(['15m', '30m', '45m', '1h', '2h']).default('30m'),
+    ...durationFields,
     calendars: z.string().transform((v) => v.split(',')).optional(),
     include_busy: z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
   })
+  .superRefine(refineDurationConflict)
+  .transform(resolveDuration)
   .refine((v) => new Date(v.end) > new Date(v.start), 'end must be after start');
 
 export const WEBHOOK_EVENT_TYPES = [
