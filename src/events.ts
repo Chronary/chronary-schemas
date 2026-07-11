@@ -56,6 +56,10 @@ const EventLifecyclePayloadSchema = z
     title: z.string(),
     start_time: z.string(),
     end_time: z.string(),
+    // Present when the fire is for one occurrence of a recurring series (#996).
+    // The ISO start of that occurrence; start_time/end_time are the occurrence's
+    // own times, and event_id is the series master's id.
+    occurrence_start: z.string().optional(),
   })
   .passthrough();
 
@@ -70,6 +74,8 @@ const EventReminderPayloadSchema = z
     start_time: z.string(),
     end_time: z.string(),
     reminder_minutes: z.number().int(),
+    // See EventLifecyclePayloadSchema — set for recurring-occurrence reminders.
+    occurrence_start: z.string().optional(),
   })
   .passthrough();
 const EventHoldExpiredPayloadSchema = z
