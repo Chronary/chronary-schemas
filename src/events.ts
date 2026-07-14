@@ -33,6 +33,10 @@ const AgentUpdatedPayloadSchema = z
 const EventCreatedPayloadSchema = z
   .object({
     event: z.object({}).passthrough(),
+    // Present when the event was created through a public booking page
+    // (#1036). Lets consumers correlate an inbound booking to the page that
+    // produced it. Absent for events created via the normal API/MCP paths.
+    booking_page_id: z.string().optional(),
   })
   .passthrough();
 
