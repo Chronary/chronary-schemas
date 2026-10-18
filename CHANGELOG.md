@@ -2,6 +2,10 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
+## 0.4.1 — 2026-10-18
+
+- `CreateICalSubscriptionSchema.url` and `UpdateICalSubscriptionSchema.url` emit `format: "uri"` in JSON Schema again. Under zod 4, the HTTPS `.startsWith()` check had overwritten the format with a non-standard `starts_with`. HTTPS is now enforced with `.refine`, with the same validation and the same `URL must use HTTPS` message (#1117).
+
 ## 0.4.0 — 2026-07-14
 
 - Add optional `booking_page_id` to the `event.created` webhook payload so consumers can correlate an inbound booking to the public booking page that produced it (#1036).

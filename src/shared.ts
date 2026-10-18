@@ -306,16 +306,19 @@ export const ListDeliveriesQuerySchema = z.object({
     .transform((v) => v === 'true'),
 });
 
+// HTTPS via `.refine`, not `.startsWith`: zod 4's startsWith overwrites the
+// string `format` ('uri' → 'starts_with'), so JSON Schema consumers (MCP
+// clients, agent frameworks) would lose `format: uri`.
 export const CreateICalSubscriptionSchema = z.object({
   calendar_id: z.string().min(1),
-  url: z.string().url().startsWith('https://', 'URL must use HTTPS'),
+  url: z.string().url().refine((u) => u.startsWith('https://'), 'URL must use HTTPS'),
   label: z.string().min(1).max(255).optional(),
 });
 
 export const UpdateICalSubscriptionSchema = z
   .object({
     label: z.string().min(1).max(255).optional(),
-    url: z.string().url().startsWith('https://', 'URL must use HTTPS').optional(),
+    url: z.string().url().refine((u) => u.startsWith('https://'), 'URL must use HTTPS').optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
 

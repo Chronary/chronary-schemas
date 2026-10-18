@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { z } from 'zod';
 import {
+  CreateICalSubscriptionSchema,
+  UpdateICalSubscriptionSchema,
   AvailabilityQuerySchema,
   CrossAgentAvailabilityQuerySchema,
 } from '../src/shared';
@@ -50,5 +53,29 @@ describe.each([
   it('rejects an invalid duration value', () => {
     const result = schema.safeParse({ ...base, duration: '90m' });
     expect(result.success).toBe(false);
+  });
+});
+
+// HTTPS enforcement must not clobber `format: uri` in emitted JSON Schema
+// (zod 4 `.startsWith` overwrites the string format).
+describe.each([
+  ['CreateICalSubscriptionSchema', CreateICalSubscriptionSchema, { calendar_id: 'cal_1' }],
+  ['UpdateICalSubscriptionSchema', UpdateICalSubscriptionSchema, {}],
+] as const)('%s url', (_name, schema, base) => {
+  it('keeps format: uri in JSON Schema', () => {
+    const json = z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as {
+      properties: Record<string, { format?: string }>;
+    };
+    expect(json.properties.url.format).toBe('uri');
+  });
+
+  it('accepts https URLs', () => {
+    expect(schema.safeParse({ ...base, url: 'https://cal.example.com/feed.ics' }).success).toBe(true);
+  });
+
+  it('rejects http URLs with the HTTPS message', () => {
+    const r = schema.safeParse({ ...base, url: 'http://cal.example.com/feed.ics' });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.message)).toContain('URL must use HTTPS');
   });
 });
