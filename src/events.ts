@@ -131,10 +131,58 @@ const ProposalExpiredPayloadSchema = z
   })
   .passthrough();
 
+// org.plan_changed (#1130) — the org's plan changed (upgrade, downgrade,
+// subscription end). Never carries payment-provider ids.
+const OrgPlanChangedPayloadSchema = z
+  .object({
+    org_id: z.string(),
+    previous_plan: z.string(),
+    plan: z.string(),
+    source: z.enum(['subscription', 'founding_expiry', 'admin_override', 'soft_launch_toggle', 'system']),
+    subscription_status: z.string().nullable(),
+    interval: z.enum(['month', 'year']).nullable(),
+    upgrade_request_id: z.string().nullable(),
+  })
+  .passthrough();
+
+// calendar_connection.reauthorization_required (#1196) — a human calendar the
+// org connected stopped accepting Chronary's access. Never carries the
+// account label or email: agents never receive account identities.
+const CalendarConnectionReauthorizationRequiredPayloadSchema = z
+  .object({
+    connection_id: z.string(),
+    provider: z.string(),
+    reauthorization_reason: z.string(),
+    impacted_agent_count: z.number().int().nonnegative(),
+    occurred_at: z.string(),
+  })
+  .passthrough();
+
+// usage.threshold_crossed (#1211) — a monthly usage metric reached a threshold
+// of the plan limit (50, 80, 90, 95 or 100). Fires once per metric, period and
+// threshold. `resets_at` is the next UTC month start, when the counter resets.
+const UsageThresholdCrossedPayloadSchema = z
+  .object({
+    metric: z.string(),
+    used: z.number().int().nonnegative(),
+    limit: z.number().int().nonnegative(),
+    threshold_pct: z.number().int(),
+    period: z.string(),
+    resets_at: z.string(),
+  })
+  .passthrough();
+
+// webhook.deactivated — an endpoint was disabled (circuit breaker or an unsafe
+// destination). Deliveries carry the endpoint's origin and path with the query
+// string removed, never the full URL. `url` is deprecated: no delivery sends it,
+// and it stays optional only so older fixtures still parse.
 const WebhookDeactivatedPayloadSchema = z
   .object({
     webhook_id: z.string(),
-    url: z.string(),
+    webhook_origin: z.string().optional(),
+    webhook_path: z.string().optional(),
+    /** @deprecated Deliveries send `webhook_origin` and `webhook_path` instead. */
+    url: z.string().optional(),
     reason: z.string(),
   })
   .passthrough();
@@ -158,6 +206,9 @@ const PAYLOAD_SCHEMAS = {
   'proposal.expired': ProposalExpiredPayloadSchema,
   'proposal.cancelled': ProposalCancelledPayloadSchema,
   'webhook.deactivated': WebhookDeactivatedPayloadSchema,
+  'org.plan_changed': OrgPlanChangedPayloadSchema,
+  'calendar_connection.reauthorization_required': CalendarConnectionReauthorizationRequiredPayloadSchema,
+  'usage.threshold_crossed': UsageThresholdCrossedPayloadSchema,
 } satisfies Record<WebhookEventType, z.ZodType>;
 
 export {
@@ -179,6 +230,9 @@ export {
   ProposalCancelledPayloadSchema,
   ProposalExpiredPayloadSchema,
   WebhookDeactivatedPayloadSchema,
+  OrgPlanChangedPayloadSchema,
+  CalendarConnectionReauthorizationRequiredPayloadSchema,
+  UsageThresholdCrossedPayloadSchema,
 };
 
 /**

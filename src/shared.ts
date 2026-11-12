@@ -7,14 +7,14 @@ const metadataSchema = z
 export const CreateAgentSchema = z.object({
   name: z.string().min(1).max(255),
   type: z.enum(['ai', 'human', 'resource']),
-  description: z.string().optional(),
+  description: z.string().max(5_000).optional(),
   metadata: metadataSchema.optional(),
 });
 
 export const UpdateAgentSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
-    description: z.string().nullable().optional(),
+    description: z.string().max(5_000).nullable().optional(),
     metadata: metadataSchema.optional(),
     status: z.enum(['active', 'paused']).optional(),
   })
@@ -46,7 +46,7 @@ export const RemindersSchema = z
 
 export const CreateCalendarSchema = z.object({
   name: z.string().min(1).max(255),
-  timezone: z.string().min(1),
+  timezone: z.string().min(1).max(64),
   agent_status: AgentStatusEnum.optional(),
   // Default reminders inherited by events on this calendar that don't set their
   // own. `null` means "use the system default"; `[]` means "no reminders".
@@ -57,7 +57,7 @@ export const CreateCalendarSchema = z.object({
 export const UpdateCalendarSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
-    timezone: z.string().min(1).optional(),
+    timezone: z.string().min(1).max(64).optional(),
     agent_status: AgentStatusEnum.optional(),
     default_reminders: RemindersSchema.nullable().optional(),
     metadata: metadataSchema.optional(),
@@ -81,7 +81,7 @@ export const CreateEventSchema = z
     title: z.string().min(1).max(500),
     start_time: z.string().datetime(),
     end_time: z.string().datetime(),
-    description: z.string().optional(),
+    description: z.string().max(10_000).optional(),
     all_day: z.boolean().default(false),
     status: z.enum(EVENT_STATUSES).default('confirmed'),
     metadata: metadataSchema.optional(),
@@ -136,7 +136,7 @@ export const CreateEventSchema = z
 export const UpdateEventSchema = z
   .object({
     title: z.string().min(1).max(500).optional(),
-    description: z.string().nullable().optional(),
+    description: z.string().max(10_000).nullable().optional(),
     start_time: z.string().datetime().optional(),
     end_time: z.string().datetime().optional(),
     all_day: z.boolean().optional(),
@@ -273,17 +273,20 @@ export const WEBHOOK_EVENT_TYPES = [
   'proposal.expired',
   'proposal.cancelled',
   'webhook.deactivated',
+  'org.plan_changed',
+  'calendar_connection.reauthorization_required',
+  'usage.threshold_crossed',
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
 export const CreateWebhookSchema = z.object({
-  url: z.string().url('Must be a valid URL'),
+  url: z.string().url('Must be a valid URL').max(2_048),
   events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).min(1, 'At least one event type must be specified'),
 });
 
 export const UpdateWebhookSchema = z.object({
-  url: z.string().url('Must be a valid URL').optional(),
+  url: z.string().url('Must be a valid URL').max(2_048).optional(),
   events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).optional(),
   active: z.boolean().optional(),
 });
@@ -293,32 +296,57 @@ export const ListWebhooksQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
+/**
+ * `dropped` is a Free-plan delivery the monthly limit stopped: never sent,
+ * counted or retried, with `last_error_code: 'quota_exceeded'`.
+ */
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed', 'dropped'] as const;
 export const WebhookDeliveryStatusSchema = z.enum(WEBHOOK_DELIVERY_STATUSES);
 
-export const ListDeliveriesQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-  status: WebhookDeliveryStatusSchema.optional(),
-  include_payload: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => v === 'true'),
-});
+export const ListDeliveriesQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    offset: z.coerce.number().int().min(0).default(0),
+    status: WebhookDeliveryStatusSchema.optional(),
+    include_payload: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
+    /** An exact event type (`event.created`) or a prefix ending in a dot (`event.`). */
+    event_type: z.string().max(100).regex(/^[a-z_]+\.(?:[a-z_]+)?$/).optional(),
+    created_after: z.string().datetime().optional(),
+    created_before: z.string().datetime().optional(),
+    delivery_id: z.string().max(100).regex(/^whd_[A-Za-z0-9_-]+$/).optional(),
+    is_test: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+    /** The `next_cursor` from the previous page; cannot be combined with a non-zero `offset`. */
+    cursor: z.string().min(1).max(1024).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.cursor !== undefined && v.offset > 0) {
+      ctx.addIssue({ code: 'custom', path: ['cursor'], message: 'cursor and offset cannot be combined' });
+    }
+    if (
+      v.created_after !== undefined &&
+      v.created_before !== undefined &&
+      Date.parse(v.created_after) >= Date.parse(v.created_before)
+    ) {
+      ctx.addIssue({ code: 'custom', path: ['created_after'], message: 'created_after must be before created_before' });
+    }
+  });
 
 // HTTPS via `.refine`, not `.startsWith`: zod 4's startsWith overwrites the
 // string `format` ('uri' → 'starts_with'), so JSON Schema consumers (MCP
 // clients, agent frameworks) would lose `format: uri`.
 export const CreateICalSubscriptionSchema = z.object({
   calendar_id: z.string().min(1),
-  url: z.string().url().refine((u) => u.startsWith('https://'), 'URL must use HTTPS'),
+  url: z.string().url().max(2_048).refine((u) => u.startsWith('https://'), 'URL must use HTTPS'),
   label: z.string().min(1).max(255).optional(),
 });
 
 export const UpdateICalSubscriptionSchema = z
   .object({
     label: z.string().min(1).max(255).optional(),
-    url: z.string().url().refine((u) => u.startsWith('https://'), 'URL must use HTTPS').optional(),
+    url: z.string().url().max(2_048).refine((u) => u.startsWith('https://'), 'URL must use HTTPS').optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
 

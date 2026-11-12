@@ -72,7 +72,7 @@ app.post('/webhook', async (req, res) => {
   - `X-Signature` — HMAC-SHA256 signature of `timestamp + "." + body` (verify with [`@chronary/sdk`'s `verifySignature`](https://github.com/Chronary/chronary-node)).
   - `X-Timestamp` — Unix epoch seconds (decimal string, e.g. `1745784205`) used in the signature.
   - `X-Delivery-Id` — unique delivery ID (useful for idempotency + debugging).
-  - `X-Chronary-Event-Type` — one of the 18 event types in `WEBHOOK_EVENT_TYPES`.
+  - `X-Chronary-Event-Type` — one of the event types in `WEBHOOK_EVENT_TYPES`.
 - **Body**: raw JSON payload (schema depends on the event type).
 
 ### Forward compatibility
