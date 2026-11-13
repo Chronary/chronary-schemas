@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+/**
+ * A request date-time: RFC 3339 with `Z` or a numeric offset (`+00:00`,
+ * `-08:00`, `+05:30`), the same rule the API applies. An offset value becomes
+ * the same instant in UTC (`toISOString()`); a `Z` value passes through
+ * unchanged. Refines on the enclosing object compare the normalised values.
+ */
+const isoDateTimeInput = z
+  .string()
+  .datetime({ offset: true })
+  .transform((v) => (v.endsWith('Z') ? v : new Date(v).toISOString()));
+
 const metadataSchema = z
   .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 16_384, 'metadata exceeds 16KB');
@@ -79,14 +90,14 @@ export const HOLD_TTL_MAX_SECONDS = 15 * 60;
 export const CreateEventSchema = z
   .object({
     title: z.string().min(1).max(500),
-    start_time: z.string().datetime(),
-    end_time: z.string().datetime(),
+    start_time: isoDateTimeInput,
+    end_time: isoDateTimeInput,
     description: z.string().max(10_000).optional(),
     all_day: z.boolean().default(false),
     status: z.enum(EVENT_STATUSES).default('confirmed'),
     metadata: metadataSchema.optional(),
     reminders: RemindersSchema.nullable().optional(),
-    hold_expires_at: z.string().datetime().optional(),
+    hold_expires_at: isoDateTimeInput.optional(),
     hold_priority: z.number().int().min(0).max(100).optional(),
   })
   .refine((v) => new Date(v.end_time) > new Date(v.start_time), 'end_time must be after start_time')
@@ -137,8 +148,8 @@ export const UpdateEventSchema = z
   .object({
     title: z.string().min(1).max(500).optional(),
     description: z.string().max(10_000).nullable().optional(),
-    start_time: z.string().datetime().optional(),
-    end_time: z.string().datetime().optional(),
+    start_time: isoDateTimeInput.optional(),
+    end_time: isoDateTimeInput.optional(),
     all_day: z.boolean().optional(),
     status: z.enum(['confirmed', 'tentative', 'cancelled']).optional(),
     metadata: metadataSchema.optional(),
@@ -147,8 +158,8 @@ export const UpdateEventSchema = z
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
 
 export const ListEventsQuerySchema = z.object({
-  start_after: z.string().datetime().optional(),
-  start_before: z.string().datetime().optional(),
+  start_after: isoDateTimeInput.optional(),
+  start_before: isoDateTimeInput.optional(),
   status: z.enum(EVENT_STATUSES).optional(),
   source: z.enum(['internal', 'external_ical']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -226,8 +237,8 @@ function resolveDuration<T extends { duration?: SlotDuration; slot_duration?: Sl
 
 export const AvailabilityQuerySchema = z
   .object({
-    start: z.string().datetime(),
-    end: z.string().datetime(),
+    start: isoDateTimeInput,
+    end: isoDateTimeInput,
     ...durationFields,
     include_busy: z
       .enum(['true', 'false'])
@@ -241,8 +252,8 @@ export const AvailabilityQuerySchema = z
 export const CrossAgentAvailabilityQuerySchema = z
   .object({
     agents: z.string().min(1).transform((v) => v.split(',')),
-    start: z.string().datetime(),
-    end: z.string().datetime(),
+    start: isoDateTimeInput,
+    end: isoDateTimeInput,
     ...durationFields,
     calendars: z.string().transform((v) => v.split(',')).optional(),
     include_busy: z
@@ -314,8 +325,8 @@ export const ListDeliveriesQuerySchema = z
       .transform((v) => v === 'true'),
     /** An exact event type (`event.created`) or a prefix ending in a dot (`event.`). */
     event_type: z.string().max(100).regex(/^[a-z_]+\.(?:[a-z_]+)?$/).optional(),
-    created_after: z.string().datetime().optional(),
-    created_before: z.string().datetime().optional(),
+    created_after: isoDateTimeInput.optional(),
+    created_before: isoDateTimeInput.optional(),
     delivery_id: z.string().max(100).regex(/^whd_[A-Za-z0-9_-]+$/).optional(),
     is_test: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
     /** The `next_cursor` from the previous page; cannot be combined with a non-zero `offset`. */
@@ -359,8 +370,8 @@ export const ListICalSubscriptionsQuerySchema = z.object({
 const proposalMetadataSchema = metadataSchema.optional().default({});
 
 export const ProposalSlotSchema = z.object({
-  start_time: z.string().datetime(),
-  end_time: z.string().datetime(),
+  start_time: isoDateTimeInput,
+  end_time: isoDateTimeInput,
   weight: z.number().min(0).max(10).default(1.0).optional(),
   calendar_id: z.string().optional(),
 });
@@ -372,7 +383,7 @@ export const CreateProposalSchema = z.object({
   participant_agent_ids: z.array(z.string()).min(1).max(50),
   calendar_id: z.string(),
   slots: z.array(ProposalSlotSchema).min(1).max(20),
-  expires_at: z.string().datetime().optional(),
+  expires_at: isoDateTimeInput.optional(),
   metadata: proposalMetadataSchema,
 });
 

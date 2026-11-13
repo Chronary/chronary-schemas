@@ -2,6 +2,10 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
+## 0.7.1 — 2026-11-12
+
+- Request date-times accept an RFC 3339 numeric offset (`+00:00`, `-08:00`, `+05:30`) as well as `Z`, matching the API. An offset value is normalised to the same instant in UTC (`2026-11-20T09:00:00-08:00` → `2026-11-20T17:00:00.000Z`); a `Z` value is unchanged. Applies to `CreateEventSchema`, `UpdateEventSchema`, `ListEventsQuerySchema`, `AvailabilityQuerySchema`, `CrossAgentAvailabilityQuerySchema`, `ListDeliveriesQuerySchema`, `ProposalSlotSchema` and `CreateProposalSchema` (#1989).
+
 ## 0.7.0 — 2026-11-04
 
 - `WEBHOOK_DELIVERY_STATUSES` gains `dropped`: a Free-plan delivery the monthly limit stopped, recorded with `last_error_code: 'quota_exceeded'` instead of disappearing. `ListDeliveriesQuerySchema` gains `event_type` (exact, or a prefix ending in a dot such as `event.`), `created_after`, `created_before`, `delivery_id`, `is_test` and `cursor`, and rejects a cursor combined with a non-zero offset (#1200).

@@ -15,6 +15,8 @@ import {
   UpdateEventSchema,
   CreateWebhookSchema,
   UpdateWebhookSchema,
+  ListEventsQuerySchema,
+  CreateProposalSchema,
 } from '../src/shared';
 
 // `duration` is the preferred public param; `slot_duration` is a deprecated
@@ -146,5 +148,58 @@ describe('request length limits (#1672)', () => {
 
   it('caps calendar timezone at 64 characters', () => {
     expect(CreateCalendarSchema.safeParse({ name: 'c', timezone: 'x'.repeat(65) }).success).toBe(false);
+  });
+});
+
+// #1989: request date-times accept an RFC 3339 numeric offset, as the API
+// does, and normalise it to the same instant in UTC.
+describe('request date-times with an offset (#1989)', () => {
+  it('normalises event start/end and compares them as instants', () => {
+    const parsed = CreateEventSchema.parse({
+      title: 't',
+      start_time: '2026-11-20T09:00:00-08:00',
+      end_time: '2026-11-20T23:00:00+05:30',
+    });
+    expect(parsed.start_time).toBe('2026-11-20T17:00:00.000Z');
+    expect(parsed.end_time).toBe('2026-11-20T17:30:00.000Z');
+    expect(
+      CreateEventSchema.safeParse({ title: 't', start_time: '2026-11-20T17:00:00Z', end_time: '2026-11-20T09:00:00-08:00' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('passes Z through unchanged and still rejects a missing zone', () => {
+    expect(UpdateEventSchema.parse({ start_time: '2026-11-20T17:00:00Z' }).start_time).toBe('2026-11-20T17:00:00Z');
+    expect(UpdateEventSchema.safeParse({ start_time: '2026-11-20T17:00:00' }).success).toBe(false);
+    expect(UpdateEventSchema.safeParse({ start_time: 'garbage' }).success).toBe(false);
+  });
+
+  it('normalises query and proposal date-times', () => {
+    expect(ListEventsQuerySchema.parse({ start_after: '2026-11-20T00:00:00+00:00' }).start_after).toBe(
+      '2026-11-20T00:00:00.000Z',
+    );
+    expect(
+      AvailabilityQuerySchema.parse({ start: '2026-11-20T09:00:00-08:00', end: '2026-11-20T18:00:00Z' }).start,
+    ).toBe('2026-11-20T17:00:00.000Z');
+    expect(ListDeliveriesQuerySchema.parse({ created_before: '2026-11-20T09:00:00-08:00' }).created_before).toBe(
+      '2026-11-20T17:00:00.000Z',
+    );
+    const p = CreateProposalSchema.parse({
+      title: 't',
+      organizer_agent_id: 'agt_a',
+      participant_agent_ids: ['agt_b'],
+      calendar_id: 'cal_a',
+      slots: [{ start_time: '2026-11-20T09:00:00-08:00', end_time: '2026-11-20T10:00:00-08:00' }],
+      expires_at: '2026-11-19T12:00:00+00:00',
+    });
+    expect(p.slots[0].start_time).toBe('2026-11-20T17:00:00.000Z');
+    expect(p.expires_at).toBe('2026-11-19T12:00:00.000Z');
+  });
+
+  it('keeps format: date-time in input JSON Schema', () => {
+    const json = z.toJSONSchema(CreateEventSchema, { io: 'input', unrepresentable: 'any' }) as {
+      properties: Record<string, { type?: string; format?: string }>;
+    };
+    expect(json.properties.start_time).toMatchObject({ type: 'string', format: 'date-time' });
   });
 });

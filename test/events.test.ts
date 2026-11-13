@@ -95,7 +95,7 @@ describe('parseWebhookEvent', () => {
       'webhook.deactivated': { webhook_id: 'w', url: 'u', reason: 'r' },
       'org.plan_changed': { org_id: 'o', previous_plan: 'free', plan: 'pro', source: 'subscription', subscription_status: 'active', interval: 'month', upgrade_request_id: null },
       'calendar_connection.reauthorization_required': { connection_id: 'con_1', provider: 'google', reauthorization_reason: 'credentials_rejected', impacted_agent_count: 2, occurred_at: '2026-11-01T00:00:00.000Z' },
-      'usage.threshold_crossed': { metric: 'events', used: 2000, limit: 2500, threshold_pct: 80, period: '2026-11', resets_at: '2026-12-01T00:00:00.000Z' },
+      'usage.threshold_crossed': { metric: 'events', used: 80, limit: 100, threshold_pct: 80, period: '2026-11', resets_at: '2026-12-01T00:00:00.000Z' },
     };
 
     expect(Object.keys(minimal).sort()).toEqual([...WEBHOOK_EVENT_TYPES].sort());
@@ -162,8 +162,8 @@ describe('calendar_connection.reauthorization_required (#1196)', () => {
 describe('usage.threshold_crossed (#1211)', () => {
   const payload = {
     metric: 'api_calls',
-    used: 40000,
-    limit: 50000,
+    used: 800,
+    limit: 1000,
     threshold_pct: 80,
     period: '2026-11',
     resets_at: '2026-12-01T00:00:00.000Z',
