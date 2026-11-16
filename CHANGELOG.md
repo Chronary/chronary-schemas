@@ -2,6 +2,10 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
+## 0.8.0 — 2026-11-16
+
+- Time-zone-aware recurrence (#2276): `CreateEventSchema` gains an optional `timezone` and `UpdateEventSchema` an optional, nullable `timezone` (an IANA name such as `America/Los_Angeles`; `null` on update returns the series to UTC). An unknown zone fails validation.
+
 ## 0.7.1 — 2026-11-12
 
 - Request date-times accept an RFC 3339 numeric offset (`+00:00`, `-08:00`, `+05:30`) as well as `Z`, matching the API. An offset value is normalised to the same instant in UTC (`2026-11-20T09:00:00-08:00` → `2026-11-20T17:00:00.000Z`); a `Z` value is unchanged. Applies to `CreateEventSchema`, `UpdateEventSchema`, `ListEventsQuerySchema`, `AvailabilityQuerySchema`, `CrossAgentAvailabilityQuerySchema`, `ListDeliveriesQuerySchema`, `ProposalSlotSchema` and `CreateProposalSchema` (#1989).

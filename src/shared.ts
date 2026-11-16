@@ -84,6 +84,16 @@ export const ListCalendarsQuerySchema = z.object({
 export const EVENT_STATUSES = ['confirmed', 'tentative', 'cancelled', 'hold'] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 
+/** IANA time zone a recurring series repeats in (#2276); null/omitted = UTC. */
+const EventTimeZoneSchema = z.string().min(1).max(64).refine((tz) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: 'timezone must be an IANA time zone (e.g. America/Los_Angeles)' });
+
 export const HOLD_TTL_MIN_SECONDS = 30;
 export const HOLD_TTL_MAX_SECONDS = 15 * 60;
 
@@ -97,6 +107,7 @@ export const CreateEventSchema = z
     status: z.enum(EVENT_STATUSES).default('confirmed'),
     metadata: metadataSchema.optional(),
     reminders: RemindersSchema.nullable().optional(),
+    timezone: EventTimeZoneSchema.optional(),
     hold_expires_at: isoDateTimeInput.optional(),
     hold_priority: z.number().int().min(0).max(100).optional(),
   })
@@ -154,6 +165,7 @@ export const UpdateEventSchema = z
     status: z.enum(['confirmed', 'tentative', 'cancelled']).optional(),
     metadata: metadataSchema.optional(),
     reminders: RemindersSchema.nullable().optional(),
+    timezone: EventTimeZoneSchema.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
 

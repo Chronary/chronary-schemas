@@ -203,3 +203,29 @@ describe('request date-times with an offset (#1989)', () => {
     expect(json.properties.start_time).toMatchObject({ type: 'string', format: 'date-time' });
   });
 });
+
+describe('time zone request fields (#2276)', () => {
+  const base = { title: 'Sync', start_time: '2030-01-08T16:00:00Z', end_time: '2030-01-08T17:00:00Z' };
+
+  it('create accepts an IANA time zone and omits it by default', () => {
+    const r = CreateEventSchema.safeParse({ ...base, timezone: 'America/Los_Angeles' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.timezone).toBe('America/Los_Angeles');
+    const plain = CreateEventSchema.safeParse(base);
+    expect(plain.success).toBe(true);
+    if (plain.success) expect(plain.data.timezone).toBeUndefined();
+  });
+
+  it('create rejects an unknown zone, an empty string and null', () => {
+    expect(CreateEventSchema.safeParse({ ...base, timezone: 'Mars/Olympus' }).success).toBe(false);
+    expect(CreateEventSchema.safeParse({ ...base, timezone: '' }).success).toBe(false);
+    expect(CreateEventSchema.safeParse({ ...base, timezone: null }).success).toBe(false);
+    expect(CreateEventSchema.safeParse({ ...base, timezone: 'x'.repeat(65) }).success).toBe(false);
+  });
+
+  it('update accepts a zone or null (back to UTC) and rejects an unknown zone', () => {
+    expect(UpdateEventSchema.safeParse({ timezone: 'Europe/Berlin' }).success).toBe(true);
+    expect(UpdateEventSchema.safeParse({ timezone: null }).success).toBe(true);
+    expect(UpdateEventSchema.safeParse({ timezone: 'Not/AZone' }).success).toBe(false);
+  });
+});
