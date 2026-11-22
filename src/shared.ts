@@ -11,6 +11,37 @@ const isoDateTimeInput = z
   .datetime({ offset: true })
   .transform((v) => (v.endsWith('Z') ? v : new Date(v).toISOString()));
 
+/** An RFC 3339 date-time as written, offset kept; event schemas convert it after reading its date. */
+const isoDateTimeWritten = z.string().datetime({ offset: true });
+
+const toUtcDateTime = (v: string): string => (v.endsWith('Z') ? v : new Date(v).toISOString());
+
+const DAY_MS = 86_400_000;
+
+/** Wall-clock ms of a written RFC 3339 value, read in its own offset. */
+const wallClockMs = (v: string): number => Date.parse(v.replace(/(?:Z|[+-]\d{2}:\d{2})$/, 'Z'));
+
+/** Midnight UTC of the written date of `v`: an all-day start (#2566). */
+const allDayStart = (v: string): number => Math.floor(wallClockMs(v) / DAY_MS) * DAY_MS;
+
+/** Midnight UTC after the last day `v` touches: its written date at 00:00, else the next day. */
+function allDayEnd(v: string): number {
+  const wall = wallClockMs(v);
+  const day = Math.floor(wall / DAY_MS) * DAY_MS;
+  return wall > day ? day + DAY_MS : day;
+}
+
+/**
+ * An all-day event is stored as whole UTC days, as the API does (#2566):
+ * midnight UTC of the date written in `start`, through midnight UTC after the
+ * last day `end` touches (exclusive), at least one day.
+ */
+function allDayRange(start: string, end: string): { start_time: string; end_time: string } {
+  const first = allDayStart(start);
+  const last = Math.max(allDayEnd(end), first + DAY_MS);
+  return { start_time: new Date(first).toISOString(), end_time: new Date(last).toISOString() };
+}
+
 const metadataSchema = z
   .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 16_384, 'metadata exceeds 16KB');
@@ -55,9 +86,19 @@ export const RemindersSchema = z
   .max(REMINDER_MAX_COUNT, `at most ${REMINDER_MAX_COUNT} reminders allowed`)
   .transform((arr) => Array.from(new Set(arr)).sort((a, b) => a - b));
 
+/** A stored IANA time zone: calendars, availability rules, recurring events (#2512). */
+const IanaTimeZoneSchema = z.string().min(1).max(64).refine((tz) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: 'timezone must be a time zone name the API accepts: an IANA name such as America/New_York, or a UTC offset like +05:00' });
+
 export const CreateCalendarSchema = z.object({
   name: z.string().min(1).max(255),
-  timezone: z.string().min(1).max(64),
+  timezone: IanaTimeZoneSchema,
   agent_status: AgentStatusEnum.optional(),
   // Default reminders inherited by events on this calendar that don't set their
   // own. `null` means "use the system default"; `[]` means "no reminders".
@@ -68,7 +109,7 @@ export const CreateCalendarSchema = z.object({
 export const UpdateCalendarSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
-    timezone: z.string().min(1).max(64).optional(),
+    timezone: IanaTimeZoneSchema.optional(),
     agent_status: AgentStatusEnum.optional(),
     default_reminders: RemindersSchema.nullable().optional(),
     metadata: metadataSchema.optional(),
@@ -85,14 +126,7 @@ export const EVENT_STATUSES = ['confirmed', 'tentative', 'cancelled', 'hold'] as
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 
 /** IANA time zone a recurring series repeats in (#2276); null/omitted = UTC. */
-const EventTimeZoneSchema = z.string().min(1).max(64).refine((tz) => {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}, { message: 'timezone must be an IANA time zone (e.g. America/Los_Angeles)' });
+const EventTimeZoneSchema = IanaTimeZoneSchema;
 
 export const HOLD_TTL_MIN_SECONDS = 30;
 export const HOLD_TTL_MAX_SECONDS = 15 * 60;
@@ -100,8 +134,8 @@ export const HOLD_TTL_MAX_SECONDS = 15 * 60;
 export const CreateEventSchema = z
   .object({
     title: z.string().min(1).max(500),
-    start_time: isoDateTimeInput,
-    end_time: isoDateTimeInput,
+    start_time: isoDateTimeWritten,
+    end_time: isoDateTimeWritten,
     description: z.string().max(10_000).optional(),
     all_day: z.boolean().default(false),
     status: z.enum(EVENT_STATUSES).default('confirmed'),
@@ -153,21 +187,45 @@ export const CreateEventSchema = z
         });
       }
     }
-  });
+  })
+  .transform((v) =>
+    v.all_day
+      ? { ...v, ...allDayRange(v.start_time, v.end_time) }
+      : { ...v, start_time: toUtcDateTime(v.start_time), end_time: toUtcDateTime(v.end_time) },
+  );
 
 export const UpdateEventSchema = z
   .object({
     title: z.string().min(1).max(500).optional(),
     description: z.string().max(10_000).nullable().optional(),
-    start_time: isoDateTimeInput.optional(),
-    end_time: isoDateTimeInput.optional(),
+    start_time: isoDateTimeWritten.optional(),
+    end_time: isoDateTimeWritten.optional(),
     all_day: z.boolean().optional(),
     status: z.enum(['confirmed', 'tentative', 'cancelled']).optional(),
     metadata: metadataSchema.optional(),
     reminders: RemindersSchema.nullable().optional(),
     timezone: EventTimeZoneSchema.nullable().optional(),
   })
-  .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');
+  .refine(
+    (v) => !v.start_time || !v.end_time || new Date(v.end_time) > new Date(v.start_time),
+    'end_time must be after start_time',
+  )
+  .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field')
+  .transform((v) => {
+    // all_day: true in the body snaps the sent bounds on their written dates
+    // (#2566); the API handles the other cases against the stored event.
+    const out = { ...v };
+    if (v.all_day === true && v.start_time !== undefined && v.end_time !== undefined) {
+      return { ...out, ...allDayRange(v.start_time, v.end_time) };
+    }
+    if (v.start_time !== undefined) {
+      out.start_time = v.all_day === true ? new Date(allDayStart(v.start_time)).toISOString() : toUtcDateTime(v.start_time);
+    }
+    if (v.end_time !== undefined) {
+      out.end_time = v.all_day === true ? new Date(allDayEnd(v.end_time)).toISOString() : toUtcDateTime(v.end_time);
+    }
+    return out;
+  });
 
 export const ListEventsQuerySchema = z.object({
   start_after: isoDateTimeInput.optional(),
@@ -201,7 +259,7 @@ export const UpdateAvailabilityRulesSchema = z.object({
   buffer_before_minutes: z.number().int().min(0).max(120).default(0),
   buffer_after_minutes: z.number().int().min(0).max(120).default(0),
   working_hours: WorkingHoursSchema.nullable().default(null),
-  timezone: z.string().min(1).max(64).default('UTC'),
+  timezone: IanaTimeZoneSchema.default('UTC'),
 });
 
 const SLOT_DURATIONS = ['15m', '30m', '45m', '1h', '2h'] as const;

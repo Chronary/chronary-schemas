@@ -204,6 +204,40 @@ describe('request date-times with an offset (#1989)', () => {
   });
 });
 
+// #2566: an all-day event is normalised to whole UTC days, as the API does.
+describe('all-day events (#2566)', () => {
+  it('create keeps the written date and gives an exclusive next-midnight end', () => {
+    const east = CreateEventSchema.parse({ title: 't', all_day: true, start_time: '2026-07-04T00:00:00+09:00', end_time: '2026-07-05T00:00:00+09:00' });
+    expect([east.start_time, east.end_time]).toEqual(['2026-07-04T00:00:00.000Z', '2026-07-05T00:00:00.000Z']);
+    const eod = CreateEventSchema.parse({ title: 't', all_day: true, start_time: '2026-07-04T00:00:00Z', end_time: '2026-07-04T23:59:59Z' });
+    expect([eod.start_time, eod.end_time]).toEqual(['2026-07-04T00:00:00.000Z', '2026-07-05T00:00:00.000Z']);
+    const short = CreateEventSchema.parse({ title: 't', all_day: true, start_time: '2026-07-04T10:00:00Z', end_time: '2026-07-04T10:30:00Z' });
+    expect(short.end_time).toBe('2026-07-05T00:00:00.000Z');
+  });
+
+  it('update normalises when the body sets all_day: true', () => {
+    expect(UpdateEventSchema.parse({ all_day: true, start_time: '2026-07-04T00:00:00-08:00', end_time: '2026-07-04T23:59:59-08:00' })).toEqual({
+      all_day: true, start_time: '2026-07-04T00:00:00.000Z', end_time: '2026-07-05T00:00:00.000Z',
+    });
+    expect(UpdateEventSchema.parse({ all_day: true, start_time: '2026-07-04T00:00:00+09:00' })).toEqual({
+      all_day: true, start_time: '2026-07-04T00:00:00.000Z',
+    });
+    expect(UpdateEventSchema.parse({ all_day: true, end_time: '2026-07-07T00:00:00+14:00' })).toEqual({
+      all_day: true, end_time: '2026-07-07T00:00:00.000Z',
+    });
+  });
+
+  it('create covers every day a span touches', () => {
+    const cross = CreateEventSchema.parse({ title: 't', all_day: true, start_time: '2026-07-04T20:00:00Z', end_time: '2026-07-05T04:00:00Z' });
+    expect([cross.start_time, cross.end_time]).toEqual(['2026-07-04T00:00:00.000Z', '2026-07-06T00:00:00.000Z']);
+  });
+
+  it('update still rejects a reversed range', () => {
+    expect(UpdateEventSchema.safeParse({ all_day: true, start_time: '2026-07-06T00:00:00Z', end_time: '2026-07-04T00:00:00Z' }).success).toBe(false);
+    expect(UpdateEventSchema.safeParse({ start_time: '2026-07-06T00:00:00Z', end_time: '2026-07-06T00:00:00Z' }).success).toBe(false);
+  });
+});
+
 describe('time zone request fields (#2276)', () => {
   const base = { title: 'Sync', start_time: '2030-01-08T16:00:00Z', end_time: '2030-01-08T17:00:00Z' };
 

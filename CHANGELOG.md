@@ -2,7 +2,13 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
-## 0.8.1 — unreleased
+## 0.8.2 — unreleased
+
+- All-day events are normalised to whole UTC days, matching the API (#2566). With `all_day: true`, `CreateEventSchema` outputs `start_time` as midnight UTC of the date written in `start_time` (in its own offset, so `2026-07-04T00:00:00+09:00` is 4 July) and `end_time` as midnight UTC after the last day the end touches (exclusive; `T23:59:59` covers that whole day), at least one day. `UpdateEventSchema` does the same when the body sets `all_day: true`, snapping only the bounds that were sent. Timed events are unchanged. The API's availability and conflict checks treat an all-day event as busy for those whole UTC days.
+- `UpdateEventSchema` rejects a body whose `end_time` is not after its `start_time`, as the API does.
+- `CreateCalendarSchema.timezone`, `UpdateCalendarSchema.timezone` and `UpdateAvailabilityRulesSchema.timezone` reject a time zone name the API does not accept (it accepts an IANA name such as `America/New_York` or a UTC offset like `+05:00`; `America/New York` and `GMT+5` fail), matching the API (#2512).
+
+## 0.8.1 — 2026-11-22
 
 - `ProposalSlotSchema` (and so `CreateProposalSchema.slots` and `RespondToProposalSchema.counter_slots`) rejects a slot whose `end_time` is not after its `start_time`, matching the API (#2538).
 
