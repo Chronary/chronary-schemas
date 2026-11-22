@@ -2,6 +2,10 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
+## 0.8.1 — unreleased
+
+- `ProposalSlotSchema` (and so `CreateProposalSchema.slots` and `RespondToProposalSchema.counter_slots`) rejects a slot whose `end_time` is not after its `start_time`, matching the API (#2538).
+
 ## 0.8.0 — 2026-11-16
 
 - Time-zone-aware recurrence (#2276): `CreateEventSchema` gains an optional `timezone` and `UpdateEventSchema` an optional, nullable `timezone` (an IANA name such as `America/Los_Angeles`; `null` on update returns the series to UTC). An unknown zone fails validation.

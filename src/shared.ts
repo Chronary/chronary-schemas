@@ -381,12 +381,17 @@ export const ListICalSubscriptionsQuerySchema = z.object({
 
 const proposalMetadataSchema = metadataSchema.optional().default({});
 
-export const ProposalSlotSchema = z.object({
-  start_time: isoDateTimeInput,
-  end_time: isoDateTimeInput,
-  weight: z.number().min(0).max(10).default(1.0).optional(),
-  calendar_id: z.string().optional(),
-});
+export const ProposalSlotSchema = z
+  .object({
+    start_time: isoDateTimeInput,
+    end_time: isoDateTimeInput,
+    weight: z.number().min(0).max(10).default(1.0).optional(),
+    calendar_id: z.string().optional(),
+  })
+  .refine(
+    (v) => new Date(v.end_time).getTime() > new Date(v.start_time).getTime(),
+    'end_time must be after start_time',
+  );
 
 export const CreateProposalSchema = z.object({
   title: z.string().min(1).max(500),

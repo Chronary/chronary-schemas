@@ -1,9 +1,9 @@
 {
   "artifact": "schemas",
-  "version": "0.8.0",
-  "public_tag": "v0.8.0",
-  "private_source_sha": "8ef90384efcf6825387e7e15108b94baa08891fb",
-  "private_release_tag": "public-release/20261116.4-8ef9038",
+  "version": "0.8.1",
+  "public_tag": "v0.8.1",
+  "private_source_sha": "867ab21f45ffe7e0a73a0f976be18671203766d7",
+  "private_release_tag": "public-release/20261122.1-867ab21",
   "publish_registry": true,
-  "generated_at": "2026-11-16T22:17:37.526Z"
+  "generated_at": "2026-11-22T07:04:14.971Z"
 }
