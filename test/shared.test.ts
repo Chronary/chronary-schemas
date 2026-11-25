@@ -18,6 +18,7 @@ import {
   ListEventsQuerySchema,
   CreateProposalSchema,
 } from '../src/shared';
+import { normalizeDisplayName, UpdateCalendarSchema as UpdateCalendarNameSchema } from '../src/shared';
 
 // `duration` is the preferred public param; `slot_duration` is a deprecated
 // alias. Both schemas coalesce to the canonical internal `slot_duration`.
@@ -261,5 +262,35 @@ describe('time zone request fields (#2276)', () => {
     expect(UpdateEventSchema.safeParse({ timezone: 'Europe/Berlin' }).success).toBe(true);
     expect(UpdateEventSchema.safeParse({ timezone: null }).success).toBe(true);
     expect(UpdateEventSchema.safeParse({ timezone: 'Not/AZone' }).success).toBe(false);
+  });
+});
+
+// #2500: names are normalised the way the API stores them.
+describe('display names (#2500)', () => {
+  it('normalises calendar and agent names', () => {
+    expect(normalizeDisplayName('  Front\u00a0office\n')).toBe('Front office');
+    expect(CreateCalendarSchema.parse({ name: 'Wo\u200Brk  ', timezone: 'UTC' }).name).toBe('Work');
+    expect(UpdateCalendarNameSchema.parse({ name: 'Cafe\u0301' }).name).toBe('Caf\u00e9');
+    expect(CreateAgentSchema.parse({ name: ' Bot\t1 ', type: 'ai' }).name).toBe('Bot 1');
+    expect(UpdateAgentSchema.parse({ name: 'a  b' }).name).toBe('a b');
+  });
+
+  it('strips format characters before NFC and rejects names with nothing visible (#2500 review)', () => {
+    expect(normalizeDisplayName('Cafe\u200B\u0301')).toBe('Caf\u00E9');
+    expect(normalizeDisplayName('in\u202Evoice')).toBe('invoice');
+    for (const blank of ['\u200D', '\u200C', '\u00AD', '\u2800', '\u3164']) {
+      expect(CreateCalendarSchema.safeParse({ name: blank, timezone: 'UTC' }).success, JSON.stringify(blank)).toBe(false);
+    }
+  });
+
+  it('keeps ZWJ emoji sequences and the ZWNJ in a Persian name', () => {
+    expect(normalizeDisplayName('Team \u{1F468}\u200D\u{1F469}\u200D\u{1F467}')).toBe('Team \u{1F468}\u200D\u{1F469}\u200D\u{1F467}');
+    expect(CreateAgentSchema.parse({ name: '\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645', type: 'ai' }).name).toBe('\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645');
+  });
+
+  it('rejects whitespace-only names and control characters', () => {
+    expect(CreateCalendarSchema.safeParse({ name: ' \u00a0 ', timezone: 'UTC' }).success).toBe(false);
+    expect(CreateAgentSchema.safeParse({ name: '\n', type: 'ai' }).success).toBe(false);
+    expect(UpdateAgentSchema.safeParse({ name: 'Bot\u0000' }).success).toBe(false);
   });
 });

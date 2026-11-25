@@ -42,12 +42,37 @@ function allDayRange(start: string, end: string): { start_time: string; end_time
   return { start_time: new Date(first).toISOString(), end_time: new Date(last).toISOString() };
 }
 
+/**
+ * A display name (calendar or agent), normalised the way the API stores it
+ * (#2500): format characters (Unicode Cf: zero-width space, bidi controls,
+ * soft hyphen; ZWNJ and ZWJ are kept for Persian, Indic scripts and emoji)
+ * removed first, then Unicode NFC, whitespace runs collapsed to one space,
+ * ends trimmed. The length limits apply to the normalised value; a name with
+ * no visible character (whitespace only, only ZWJ/ZWNJ, braille blank,
+ * Hangul filler) or with a control character is rejected.
+ */
+export function normalizeDisplayName(value: string): string {
+  return value.replace(/(?![\u200C\u200D])\p{Cf}/gu, '').normalize('NFC').replace(/\s+/g, ' ').trim();
+}
+
+const CONTROL_CHAR = /\p{Cc}/u;
+const VISIBLE_CHAR = /[^\s\p{Cf}\u2800\u115F\u1160\u3164\uFFA0]/u;
+
+const displayName = (max: number) =>
+  z
+    .string()
+    .overwrite(normalizeDisplayName)
+    .min(1, { message: 'Enter a name with at least one visible character.', abort: true })
+    .max(max, { message: `Use ${max} characters or fewer.` })
+    .refine((v) => VISIBLE_CHAR.test(v), { message: 'Enter a name with at least one visible character.', abort: true })
+    .refine((v) => !CONTROL_CHAR.test(v), { message: 'Remove the special (control) characters from the name.' });
+
 const metadataSchema = z
   .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 16_384, 'metadata exceeds 16KB');
 
 export const CreateAgentSchema = z.object({
-  name: z.string().min(1).max(255),
+  name: displayName(255),
   type: z.enum(['ai', 'human', 'resource']),
   description: z.string().max(5_000).optional(),
   metadata: metadataSchema.optional(),
@@ -55,7 +80,7 @@ export const CreateAgentSchema = z.object({
 
 export const UpdateAgentSchema = z
   .object({
-    name: z.string().min(1).max(255).optional(),
+    name: displayName(255).optional(),
     description: z.string().max(5_000).nullable().optional(),
     metadata: metadataSchema.optional(),
     status: z.enum(['active', 'paused']).optional(),
@@ -97,7 +122,7 @@ const IanaTimeZoneSchema = z.string().min(1).max(64).refine((tz) => {
 }, { message: 'timezone must be a time zone name the API accepts: an IANA name such as America/New_York, or a UTC offset like +05:00' });
 
 export const CreateCalendarSchema = z.object({
-  name: z.string().min(1).max(255),
+  name: displayName(255),
   timezone: IanaTimeZoneSchema,
   agent_status: AgentStatusEnum.optional(),
   // Default reminders inherited by events on this calendar that don't set their
@@ -108,7 +133,7 @@ export const CreateCalendarSchema = z.object({
 
 export const UpdateCalendarSchema = z
   .object({
-    name: z.string().min(1).max(255).optional(),
+    name: displayName(255).optional(),
     timezone: IanaTimeZoneSchema.optional(),
     agent_status: AgentStatusEnum.optional(),
     default_reminders: RemindersSchema.nullable().optional(),

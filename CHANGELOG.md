@@ -2,8 +2,13 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
-## 0.8.2 — unreleased
+## 0.8.3 — unreleased
 
+- Fix the temporal-hold webhook payload schemas to match what the API sends (#2784). `parseWebhookEvent` rejected every real `event.hold_created` and `event.hold_confirmed` delivery. `EventHoldCreatedPayloadSchema` and `EventHoldConfirmedPayloadSchema` are now `{ calendar_id, event }` (the full event row, like `event.created`), no longer the lifecycle fields or a bare `event_id`. `EventHoldExpiredPayloadSchema` and `EventHoldReleasedPayloadSchema` now also require `calendar_id`, which every delivery carries, next to `event_id`.
+
+## 0.8.2 — 2026-11-22
+
+- Calendar and agent `name` fields are normalised the way the API now stores them (#2500): format characters (Unicode Cf: zero-width space, bidi controls, soft hyphen; zero-width joiner and non-joiner are kept for emoji, Persian and Indic scripts) removed, then Unicode NFC, every whitespace run (tabs, newlines, non-breaking spaces) replaced by one space, ends trimmed. The 255-character limit applies to the normalised value; a name with no visible character (whitespace only, only zero-width joiners, braille blank, Hangul filler) or with a control character fails. New export `normalizeDisplayName()`.
 - All-day events are normalised to whole UTC days, matching the API (#2566). With `all_day: true`, `CreateEventSchema` outputs `start_time` as midnight UTC of the date written in `start_time` (in its own offset, so `2026-07-04T00:00:00+09:00` is 4 July) and `end_time` as midnight UTC after the last day the end touches (exclusive; `T23:59:59` covers that whole day), at least one day. `UpdateEventSchema` does the same when the body sets `all_day: true`, snapping only the bounds that were sent. Timed events are unchanged. The API's availability and conflict checks treat an all-day event as busy for those whole UTC days.
 - `UpdateEventSchema` rejects a body whose `end_time` is not after its `start_time`, as the API does.
 - `CreateCalendarSchema.timezone`, `UpdateCalendarSchema.timezone` and `UpdateAvailabilityRulesSchema.timezone` reject a time zone name the API does not accept (it accepts an IANA name such as `America/New_York` or a UTC offset like `+05:00`; `America/New York` and `GMT+5` fail), matching the API (#2512).

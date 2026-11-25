@@ -6,6 +6,10 @@ import {
   EventCreatedPayloadSchema,
   WebhookDeactivatedPayloadSchema,
   UsageThresholdCrossedPayloadSchema,
+  EventHoldCreatedPayloadSchema,
+  EventHoldConfirmedPayloadSchema,
+  EventHoldExpiredPayloadSchema,
+  EventHoldReleasedPayloadSchema,
 } from '../src/events';
 
 describe('parseWebhookEvent', () => {
@@ -83,10 +87,10 @@ describe('parseWebhookEvent', () => {
       'event.started': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
       'event.ended': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
       'event.reminder': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e', reminder_minutes: 10 },
-      'event.hold_created': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
-      'event.hold_expired': { event_id: 'e' },
-      'event.hold_released': { event_id: 'e' },
-      'event.hold_confirmed': { event_id: 'e' },
+      'event.hold_created': { calendar_id: 'c', event: {} },
+      'event.hold_expired': { event_id: 'e', calendar_id: 'c' },
+      'event.hold_released': { event_id: 'e', calendar_id: 'c' },
+      'event.hold_confirmed': { calendar_id: 'c', event: {} },
       'proposal.created': { proposal: {} },
       'proposal.responded': { proposal_id: 'p', agent_id: 'a', response: 'accepted' },
       'proposal.confirmed': { proposal_id: 'p' },
@@ -183,5 +187,69 @@ describe('usage.threshold_crossed (#1211)', () => {
       const { [key as keyof typeof payload]: _omitted, ...rest } = payload;
       expect(UsageThresholdCrossedPayloadSchema.safeParse(rest).success, key).toBe(false);
     }
+  });
+});
+
+// #2784: the hold schemas were guessed, not taken from the emitters, so every
+// real event.hold_created and event.hold_confirmed delivery failed. These are
+// the exact bodies the REST routes and MCP tools enqueue (apps/api
+// routes/events.ts, mcp/tools/{create,confirm,release}-event.ts,
+// queues/deliver-lifecycle.ts); the API's webhook-parity test parses them too.
+describe('hold payloads match the emitters (#2784)', () => {
+  const row = {
+    id: 'evt_1',
+    calendarId: 'cal_1',
+    title: 'Client call',
+    startTime: '2026-04-17T14:00:00.000Z',
+    endTime: '2026-04-17T14:30:00.000Z',
+    description: null,
+    allDay: false,
+    source: 'internal',
+    metadata: {},
+    createdAt: '2026-04-17T13:50:00.000Z',
+    updatedAt: '2026-04-17T13:54:00.000Z',
+  };
+  const held = { ...row, status: 'hold', holdExpiresAt: '2026-04-17T13:55:00.000Z', holdPriority: 5 };
+  const confirmed = { ...row, status: 'confirmed', holdExpiresAt: null, holdPriority: 0 };
+
+  it('event.hold_created carries { calendar_id, event }', () => {
+    const result = parseWebhookEvent('event.hold_created', { calendar_id: 'cal_1', event: held });
+    expect(result.success, result.success ? '' : result.error).toBe(true);
+    if (result.success && result.event.type === 'event.hold_created') {
+      expect(result.event.data.calendar_id).toBe('cal_1');
+      expect(result.event.data.event).toEqual(held);
+    }
+  });
+
+  it('event.hold_confirmed carries { calendar_id, event }', () => {
+    const result = parseWebhookEvent('event.hold_confirmed', { calendar_id: 'cal_1', event: confirmed });
+    expect(result.success, result.success ? '' : result.error).toBe(true);
+    if (result.success && result.event.type === 'event.hold_confirmed') {
+      expect(result.event.data.calendar_id).toBe('cal_1');
+      expect(result.event.data.event).toEqual(confirmed);
+    }
+  });
+
+  it.each(['event.hold_expired', 'event.hold_released'] as const)('%s carries { calendar_id, event_id }', (type) => {
+    const result = parseWebhookEvent(type, { calendar_id: 'cal_1', event_id: 'evt_1' });
+    expect(result.success, result.success ? '' : result.error).toBe(true);
+    if (result.success && result.event.type === type) {
+      expect(result.event.data.event_id).toBe('evt_1');
+      expect(result.event.data.calendar_id).toBe('cal_1');
+    }
+  });
+
+  it('rejects the old guessed shapes', () => {
+    expect(EventHoldConfirmedPayloadSchema.safeParse({ event_id: 'evt_1' }).success).toBe(false);
+    expect(
+      EventHoldCreatedPayloadSchema.safeParse({ event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' }).success,
+    ).toBe(false);
+    expect(EventHoldExpiredPayloadSchema.safeParse({ event_id: 'evt_1' }).success).toBe(false);
+    expect(EventHoldReleasedPayloadSchema.safeParse({ event_id: 'evt_1' }).success).toBe(false);
+  });
+
+  it('requires the event object and calendar_id on created and confirmed', () => {
+    expect(EventHoldCreatedPayloadSchema.safeParse({ calendar_id: 'cal_1' }).success).toBe(false);
+    expect(EventHoldConfirmedPayloadSchema.safeParse({ event: confirmed }).success).toBe(false);
   });
 });

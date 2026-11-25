@@ -67,7 +67,23 @@ const EventLifecyclePayloadSchema = z
   })
   .passthrough();
 
-const EventHoldCreatedPayloadSchema = EventLifecyclePayloadSchema;
+// Hold payloads (#2784) mirror what the API sends. hold_created and
+// hold_confirmed carry the full event row, like event.created; hold_expired
+// and hold_released carry identifiers only, like event.deleted.
+const EventHoldEntityPayloadSchema = z
+  .object({
+    calendar_id: z.string(),
+    event: z.object({}).passthrough(),
+  })
+  .passthrough();
+const EventHoldIdsPayloadSchema = z
+  .object({
+    event_id: z.string(),
+    calendar_id: z.string(),
+  })
+  .passthrough();
+
+const EventHoldCreatedPayloadSchema = EventHoldEntityPayloadSchema;
 const EventStartedPayloadSchema = EventLifecyclePayloadSchema;
 const EventEndedPayloadSchema = EventLifecyclePayloadSchema;
 const EventReminderPayloadSchema = z
@@ -82,21 +98,9 @@ const EventReminderPayloadSchema = z
     occurrence_start: z.string().optional(),
   })
   .passthrough();
-const EventHoldExpiredPayloadSchema = z
-  .object({
-    event_id: z.string(),
-  })
-  .passthrough();
-const EventHoldReleasedPayloadSchema = z
-  .object({
-    event_id: z.string(),
-  })
-  .passthrough();
-const EventHoldConfirmedPayloadSchema = z
-  .object({
-    event_id: z.string(),
-  })
-  .passthrough();
+const EventHoldExpiredPayloadSchema = EventHoldIdsPayloadSchema;
+const EventHoldReleasedPayloadSchema = EventHoldIdsPayloadSchema;
+const EventHoldConfirmedPayloadSchema = EventHoldEntityPayloadSchema;
 
 const ProposalCreatedPayloadSchema = z
   .object({

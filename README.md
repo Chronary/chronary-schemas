@@ -24,8 +24,9 @@ app.post('/webhook', async (req, res) => {
   const rawBody = await req.text();
 
   // 1. Authenticate with the HMAC signature before trusting anything.
-  //    verifySignature reads X-Signature/X-Timestamp from the headers and
-  //    throws on a bad/missing signature or a stale timestamp.
+  //    verifySignature checks X-Signature-V2, which also covers the
+  //    X-Chronary-Event-Type and X-Delivery-Id headers, and throws on a
+  //    bad/missing signature or a stale timestamp.
   try {
     await verifySignature(rawBody, req.headers, process.env.CHRONARY_WEBHOOK_SECRET!);
   } catch {
@@ -69,7 +70,7 @@ app.post('/webhook', async (req, res) => {
 
 - **HTTP method**: `POST` to your webhook URL.
 - **Headers**:
-  - `X-Signature` — HMAC-SHA256 signature of `timestamp + "." + body` (verify with [`@chronary/sdk`'s `verifySignature`](https://github.com/Chronary/chronary-node)).
+  - `X-Signature-V2` — HMAC-SHA256 signature over the body and the timestamp, delivery id, event type, test and replay-of headers (verify with [`@chronary/sdk`'s `verifySignature`](https://github.com/Chronary/chronary-node)). The deprecated `X-Signature` covers only `timestamp + "." + body`.
   - `X-Timestamp` — Unix epoch seconds (decimal string, e.g. `1745784205`) used in the signature.
   - `X-Delivery-Id` — unique delivery ID (useful for idempotency + debugging).
   - `X-Chronary-Event-Type` — one of the event types in `WEBHOOK_EVENT_TYPES`.
