@@ -31,6 +31,7 @@ describe('parseWebhookEvent', () => {
 
   it('parses a valid event.created payload', () => {
     const result = parseWebhookEvent('event.created', {
+      calendar_id: 'cal_123',
       event: { id: 'evt_123', title: 'Standup' },
     });
     expect(result.success).toBe(true);
@@ -81,8 +82,8 @@ describe('parseWebhookEvent', () => {
     const minimal: Record<string, unknown> = {
       'agent.created': { agent: {} },
       'agent.updated': { agent: {} },
-      'event.created': { event: {} },
-      'event.updated': { event: {} },
+      'event.created': { calendar_id: 'c', event: {} },
+      'event.updated': { calendar_id: 'c', event: {} },
       'event.deleted': { event_id: 'e', calendar_id: 'c' },
       'event.started': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
       'event.ended': { event_id: 'e', calendar_id: 'c', title: 't', start_time: 's', end_time: 'e' },
@@ -119,8 +120,19 @@ describe('individual payload schemas', () => {
   });
 
   it('EventCreatedPayloadSchema accepts event object', () => {
-    const parsed = EventCreatedPayloadSchema.parse({ event: { id: 'evt_1' } });
+    const parsed = EventCreatedPayloadSchema.parse({ calendar_id: 'cal_1', event: { id: 'evt_1' } });
     expect(parsed.event).toEqual({ id: 'evt_1' });
+    expect(parsed.calendar_id).toBe('cal_1');
+  });
+
+  // #2796: every event.created / event.updated delivery carries a top-level
+  // calendar_id (REST, MCP, booking pages), so the schema requires it.
+  it.each(['event.created', 'event.updated'] as const)('%s requires calendar_id', (type) => {
+    expect(parseWebhookEvent(type, { event: { id: 'evt_1' } }).success).toBe(false);
+    expect(parseWebhookEvent(type, { calendar_id: 42, event: { id: 'evt_1' } }).success).toBe(false);
+    const ok = parseWebhookEvent(type, { calendar_id: 'cal_1', event: { id: 'evt_1' } });
+    expect(ok.success).toBe(true);
+    if (ok.success && ok.event.type === type) expect(ok.event.data.calendar_id).toBe('cal_1');
   });
 
   it('WebhookDeactivatedPayloadSchema requires reason', () => {

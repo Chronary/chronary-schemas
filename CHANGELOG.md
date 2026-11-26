@@ -2,7 +2,11 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
-## 0.8.3 — unreleased
+## 0.8.4 — unreleased
+
+- `EventCreatedPayloadSchema` and `EventUpdatedPayloadSchema` now declare the top-level `calendar_id` that every `event.created` and `event.updated` delivery carries (#2796), so the inferred types expose it without a cast. A payload without `calendar_id` now fails `parseWebhookEvent`. Every real delivery has always carried it; the sample that `POST /v1/webhooks/:id/test` sends carries it from this API release on, so a test delivery from an older API fails the new schema.
+
+## 0.8.3 — 2026-11-25
 
 - Fix the temporal-hold webhook payload schemas to match what the API sends (#2784). `parseWebhookEvent` rejected every real `event.hold_created` and `event.hold_confirmed` delivery. `EventHoldCreatedPayloadSchema` and `EventHoldConfirmedPayloadSchema` are now `{ calendar_id, event }` (the full event row, like `event.created`), no longer the lifecycle fields or a bare `event_id`. `EventHoldExpiredPayloadSchema` and `EventHoldReleasedPayloadSchema` now also require `calendar_id`, which every delivery carries, next to `event_id`.
 

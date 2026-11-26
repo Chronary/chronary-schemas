@@ -32,6 +32,7 @@ const AgentUpdatedPayloadSchema = z
 
 const EventCreatedPayloadSchema = z
   .object({
+    calendar_id: z.string(),
     event: z.object({}).passthrough(),
     // Present when the event was created through a public booking page
     // (#1036). Lets consumers correlate an inbound booking to the page that
@@ -42,6 +43,7 @@ const EventCreatedPayloadSchema = z
 
 const EventUpdatedPayloadSchema = z
   .object({
+    calendar_id: z.string(),
     event: z.object({}).passthrough(),
   })
   .passthrough();
