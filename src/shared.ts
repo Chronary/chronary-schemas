@@ -128,6 +128,9 @@ export const CreateCalendarSchema = z.object({
   // Default reminders inherited by events on this calendar that don't set their
   // own. `null` means "use the system default"; `[]` means "no reminders".
   default_reminders: RemindersSchema.nullable().optional(),
+  // Double-booking guarantee: when true, the calendar refuses any write that
+  // would leave two active events overlapping on it. Default false.
+  prevent_overlaps: z.boolean().optional(),
   metadata: metadataSchema.optional(),
 });
 
@@ -137,6 +140,7 @@ export const UpdateCalendarSchema = z
     timezone: IanaTimeZoneSchema.optional(),
     agent_status: AgentStatusEnum.optional(),
     default_reminders: RemindersSchema.nullable().optional(),
+    prevent_overlaps: z.boolean().optional(),
     metadata: metadataSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'request body must include at least one field');

@@ -2,7 +2,11 @@
 
 All notable changes to `@chronary/schemas` will be documented in this file starting with the soft-launch release.
 
-## 0.8.4 — unreleased
+## 0.8.5 — unreleased
+
+- `CreateCalendarSchema` and `UpdateCalendarSchema` accept an optional boolean `prevent_overlaps`: the double-booking guarantee, under which the calendar refuses any event that would overlap an active event on it (#595).
+
+## 0.8.4 — 2026-11-25
 
 - `EventCreatedPayloadSchema` and `EventUpdatedPayloadSchema` now declare the top-level `calendar_id` that every `event.created` and `event.updated` delivery carries (#2796), so the inferred types expose it without a cast. A payload without `calendar_id` now fails `parseWebhookEvent`. Every real delivery has always carried it; the sample that `POST /v1/webhooks/:id/test` sends carries it from this API release on, so a test delivery from an older API fails the new schema.
 

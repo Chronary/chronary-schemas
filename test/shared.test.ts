@@ -152,6 +152,20 @@ describe('request length limits (#1672)', () => {
   });
 });
 
+// #595: the double-booking guarantee is an optional boolean on create and update.
+describe('calendar prevent_overlaps (#595)', () => {
+  it('accepts a boolean on create and update, and an update with only it', () => {
+    expect(CreateCalendarSchema.parse({ name: 'c', timezone: 'UTC', prevent_overlaps: true }).prevent_overlaps).toBe(true);
+    expect(CreateCalendarSchema.parse({ name: 'c', timezone: 'UTC' }).prevent_overlaps).toBeUndefined();
+    expect(UpdateCalendarNameSchema.safeParse({ prevent_overlaps: false }).success).toBe(true);
+  });
+
+  it('rejects a non-boolean', () => {
+    expect(CreateCalendarSchema.safeParse({ name: 'c', timezone: 'UTC', prevent_overlaps: 'true' }).success).toBe(false);
+    expect(UpdateCalendarNameSchema.safeParse({ prevent_overlaps: 1 }).success).toBe(false);
+  });
+});
+
 // #1989: request date-times accept an RFC 3339 numeric offset, as the API
 // does, and normalise it to the same instant in UTC.
 describe('request date-times with an offset (#1989)', () => {
